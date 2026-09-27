@@ -31,12 +31,8 @@ services:
       - name: PUBLIC_URL
         value: https://beanframe.prayujt.com
       - name: OIDC_ISSUER_URL
-        value: https://auth.prayujt.com/application/o/beanframe-ui/
+        value: https://auth.prayujt.com/application/o/beanframe/
       - name: OIDC_CLIENT_ID
-        value: beanframe-ui
-      - name: OIDC_CLIENT_SECRET
-        value: ${OIDC_CLIENT_SECRET}
+        value: beanframe
       - name: OIDC_PROVIDER_NAME
         value: OpenID Connect
-      - name: MCP_ISSUER_URL
-        value: https://auth.prayujt.com/application/o/beanframe-mcp/
