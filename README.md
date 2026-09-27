@@ -86,6 +86,19 @@ accept signed logout notifications at `PUBLIC_URL/auth/backchannel-logout`.
 Local sign-out ends the application session without signing out of other apps.
 Sessions are held in memory: run one replica, and expect sign-in after a restart.
 
+Production at `beanframe.prayujt.com` uses the **Beanframe** Authentik application
+with public client ID `beanframe` and issuer
+`https://auth.prayujt.com/application/o/beanframe/` for both browser login and MCP.
+`nimbus.yaml` omits `MCP_ISSUER_URL` so MCP inherits `OIDC_ISSUER_URL`, and omits
+`OIDC_CLIENT_SECRET` because both flows use S256 PKCE. The shared application's
+access policy controls who can use either interface; MCP writes still require
+`beancount:write`. Configure MCP integrations with client ID `beanframe` and no
+client secret. Existing integrations using `beanframe-mcp` must reconnect after
+the deployment switches issuers.
+
+Branch previews retain their separate `beanframe-preview` client and issuer in
+`nimbus-preview.yaml`.
+
 ### MCP clients
 
 Connect to `PUBLIC_URL/mcp`. OAuth resource metadata is served at
