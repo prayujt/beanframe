@@ -1,0 +1,172 @@
+name: Publish and deploy Beanframe
+
+on:
+  push:
+    branches: ['**']
+
+  delete:
+
+  pull_request:
+    types: [closed]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# New pushes and cleanup cancel older runs for the same branch.
+concurrency:
+  group: nimbus-beanframe-${{ github.event_name == 'pull_request' && (github.event.action != 'closed' || github.event.pull_request.head.repo.full_name != github.repository) && format('pr-{0}', github.event.number) || github.event_name == 'delete' && github.event.ref || github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  NIMBUS_URL: ${{ vars.NIMBUS_URL || 'https://nimbus.prayujt.com' }}
+  NIMBUS_PROJECT: ${{ vars.NIMBUS_PROJECT || github.event.repository.name }}
+  PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://beanframe.prayujt.com' }}
+  NIMBUS_PREVIEW_DOMAIN: ${{ vars.NIMBUS_PREVIEW_DOMAIN || 'prayujt.com' }}
+
+jobs:
+  publish:
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/master'
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    env:
+      KO_DOCKER_REPO: docker.prayujt.com/beanframe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/server/go.mod
+          cache-dependency-path: apps/server/go.sum
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install source-check and browser-test dependencies
+        run: make setup-deps
+
+      - name: Validate source and generated bindings
+        run: make check-proto check
+
+      - name: Install browser test runtime
+        run: pnpm --filter @beanframe/web exec playwright install --with-deps chromium
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker registry
+        uses: docker/login-action@v3
+        with:
+          registry: docker.prayujt.com
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - uses: ko-build/setup-ko@v0.10
+        with:
+          version: v0.19.1
+
+      - name: Build and push Python and UI runtime
+        id: runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          target: runtime
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: docker.prayujt.com/beanframe-runtime:${{ github.sha }}
+          cache-from: type=gha,scope=beanframe-runtime
+          cache-to: type=gha,scope=beanframe-runtime,mode=max
+
+      - name: Build and publish Go application with ko
+        id: application
+        working-directory: apps/server
+        env:
+          KO_DEFAULTBASEIMAGE: docker.prayujt.com/beanframe-runtime@${{ steps.runtime.outputs.digest }}
+        run: |
+          image=$(ko build --bare --tags "$GITHUB_SHA" ./cmd/server)
+          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test published image
+        env:
+          IMAGE: ${{ steps.application.outputs.image }}
+        run: |
+          docker run -d -e AUTH_DISABLED=true -e LEDGER_PATH=/data/ledger/main.beancount -e LEDGER_SEED_DIR=/app/example --tmpfs /data:uid=10001,gid=10001,mode=0700 --name beanframe-smoke -p 127.0.0.1:18880:8080 "$IMAGE"
+          trap 'docker logs beanframe-smoke; docker stop beanframe-smoke; docker rm beanframe-smoke' EXIT
+          python3 scripts/smoke-http.py http://127.0.0.1:18880
+
+      - name: Test the published UI in a browser
+        env:
+          TEST_IMAGE: ${{ steps.application.outputs.image }}
+        run: pnpm test:web
+
+      - name: Test the published image with an empty preview volume
+        env:
+          IMAGE: ${{ steps.application.outputs.image }}
+        run: |
+          docker run -d -e AUTH_DISABLED=true -e LEDGER_PATH=/data/ledger/main.beancount -e LEDGER_SEED_DIR=/app/preview --tmpfs /data:uid=10001,gid=10001,mode=0700 --name beanframe-preview-smoke -p 127.0.0.1:18882:8080 "$IMAGE"
+          trap 'docker logs beanframe-preview-smoke; docker stop beanframe-preview-smoke; docker rm beanframe-preview-smoke' EXIT
+          python3 scripts/smoke-preview.py http://127.0.0.1:18882
+
+      - name: Verify Nimbus commit tag identifies the tested image
+        env:
+          IMAGE: ${{ steps.application.outputs.image }}
+        run: |
+          digest=$(docker buildx imagetools inspect "$KO_DOCKER_REPO:$GITHUB_SHA" | awk '$1 == "Digest:" { print $2 }')
+          test -n "$digest"
+          test "${IMAGE##*@}" = "$digest"
+
+      - name: Update latest tag on main
+        if: github.ref == 'refs/heads/main'
+        env:
+          IMAGE: ${{ steps.application.outputs.image }}
+        run: |
+          docker buildx imagetools create --tag "$KO_DOCKER_REPO:latest" "$IMAGE"
+
+      - name: Prepare isolated deployment configuration
+        id: deployment
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+        run: python3 scripts/nimbus-config.py
+
+      - name: Deploy with Nimbus
+        uses: rayman-tech/nimbus-action@v2
+        with:
+          api-key: ${{ secrets.NIMBUS_API_KEY }}
+          nimbus-server: ${{ env.NIMBUS_URL }}
+          nimbus-path: .nimbus-deploy.yaml
+
+      - name: Verify deployed authentication
+        env:
+          PUBLIC_URL: ${{ steps.deployment.outputs.origin }}
+        run: python3 scripts/smoke-auth.py "$PUBLIC_URL"
+
+  cleanup:
+    if: >-
+      (github.event_name == 'delete' && github.event.ref_type == 'branch' && github.event.ref != 'main' && github.event.ref != 'master') ||
+      (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref != 'main' && github.event.pull_request.head.ref != 'master')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clean up preview namespace and volume claim
+        env:
+          BRANCH_NAME: ${{ github.event_name == 'delete' && github.event.ref || github.event.pull_request.head.ref }}
+          CLEANUP_BRANCH: 'true'
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+        run: python3 scripts/nimbus-config.py

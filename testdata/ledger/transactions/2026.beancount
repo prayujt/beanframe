@@ -1,0 +1,15 @@
+2026-01-02 * "Founder loan"
+  Assets:Checking                    100.00 USD
+  Liabilities:Founder               -100.00 USD
+
+2026-01-03 * "Cloud" "Hosting bill" #hosting
+  Assets:Checking                    -12.34 USD
+  Expenses:Hosting
+
+2026-02-04 * "Customer" "Subscription"
+  Assets:Checking                     30.00 USD
+  Income:Sales
+
+2026-02-05 * "Cloud" "European hosting"
+  Assets:Checking                     -2.50 EUR
+  Expenses:Hosting

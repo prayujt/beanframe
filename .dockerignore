@@ -1,0 +1,16 @@
+.git
+.venv
+**/node_modules
+**/dist
+**/.svelte-kit
+apps/web/build
+**/test-results
+**/playwright-report
+**/__pycache__
+**/*.egg-info
+bin
+.env
+.tools
+
+.nimbus-deploy.yaml
+.env.*

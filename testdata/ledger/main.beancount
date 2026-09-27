@@ -1,0 +1,5 @@
+option "title" "Example ledger"
+option "operating_currency" "USD"
+
+include "accounts.beancount"
+include "transactions/2026.beancount"

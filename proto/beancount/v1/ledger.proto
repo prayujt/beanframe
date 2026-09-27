@@ -1,0 +1,46 @@
+syntax = "proto3";
+package beancount.v1;
+option go_package = "github.com/prayujt/beanframe/apps/server/gen/beancount/v1;beancountv1";
+
+service LedgerService {
+  rpc GetSession(Empty) returns (Session);
+  rpc GetSnapshot(Empty) returns (Snapshot);
+  rpc GetReport(ReportRequest) returns (Report);
+  rpc WatchLedger(Empty) returns (stream LedgerEvent);
+  rpc SaveTransaction(SaveTransactionRequest) returns (MutationResult);
+  rpc DeleteTransaction(DeleteTransactionRequest) returns (MutationResult);
+  rpc OpenAccount(OpenAccountRequest) returns (MutationResult);
+  rpc CloseAccount(CloseAccountRequest) returns (MutationResult);
+  rpc ReadFile(FileRequest) returns (LedgerFile);
+  rpc WriteFile(WriteFileRequest) returns (MutationResult);
+  rpc GetHistory(Empty) returns (History);
+  rpc RestoreVersion(RestoreVersionRequest) returns (MutationResult);
+}
+message Empty {}
+message User { string subject = 1; string name = 2; string username = 3; string email = 4; repeated string groups = 5; }
+message Session { bool authenticated = 1; bool auth_enabled = 2; string provider = 3; User user = 4; string expires_at = 5; bool can_write = 6; string brand_name = 7; string brand_logo_url = 8; bool renewable = 9; string company_name = 10; }
+message Amount { string number = 1; string currency = 2; }
+message Posting { string account = 1; Amount units = 2; string cost = 3; Amount price = 4; Amount book_value = 5; }
+message Transaction { string id = 1; string date = 2; string flag = 3; string payee = 4; string narration = 5; repeated string tags = 6; repeated string links = 7; repeated Posting postings = 8; string file = 9; int32 line = 10; string source = 11; }
+message Account { string name = 1; string opened = 2; repeated string currencies = 3; string closed = 4; }
+message Position { Amount units = 1; string cost = 2; }
+message Balance { string account = 1; repeated Position positions = 2; }
+message Diagnostic { string message = 1; string file = 2; int32 line = 3; }
+message FileInfo { string path = 1; int32 bytes = 2; }
+message Snapshot { string title = 1; string revision = 2; repeated Account accounts = 3; repeated Transaction transactions = 4; repeated Balance balances = 5; repeated string errors = 6; repeated Diagnostic diagnostics = 7; repeated FileInfo files = 8; repeated string currencies = 9; repeated string operating_currencies = 10; }
+message LedgerEvent { string revision = 1; string kind = 2; }
+message SaveTransactionRequest { string expected_revision = 1; string id = 2; string file = 3; string source = 4; }
+message DeleteTransactionRequest { string expected_revision = 1; string id = 2; }
+message OpenAccountRequest { string expected_revision = 1; string name = 2; string date = 3; repeated string currencies = 4; }
+message CloseAccountRequest { string expected_revision = 1; string name = 2; string date = 3; }
+message FileRequest { string path = 1; }
+message LedgerFile { string path = 1; string content = 2; string revision = 3; }
+message WriteFileRequest { string expected_revision = 1; string path = 2; string content = 3; }
+message MutationResult { string revision = 1; string message = 2; }
+message HistoryEntry { string id = 1; string timestamp = 2; string actor = 3; string operation = 4; string file = 5; string before_revision = 6; string after_revision = 7; }
+message History { repeated HistoryEntry entries = 1; }
+message RestoreVersionRequest { string expected_revision = 1; string id = 2; }
+message ReportRequest { string from = 1; string to = 2; string currency = 3; }
+message ReportRow { string account = 1; string number = 2; }
+message Period { string month = 1; string income = 2; string expenses = 3; string net_income = 4; string net_worth = 5; }
+message Report { string currency = 1; string income = 2; string expenses = 3; string net_income = 4; string assets = 5; string liabilities = 6; string equity = 7; string net_worth = 8; repeated ReportRow income_statement = 9; repeated ReportRow balance_sheet = 10; repeated ReportRow trial_balance = 11; repeated Period periods = 12; string from = 13; string to = 14; string revision = 15; }

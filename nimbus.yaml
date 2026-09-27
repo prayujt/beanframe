@@ -1,0 +1,44 @@
+app: beanframe
+allowBranchPreviews: true
+services:
+  - name: server
+    public: true
+    template: http
+    readinessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      initialDelaySeconds: 2
+      periodSeconds: 5
+    image: docker.prayujt.com/beanframe
+    ingress: beanframe.prayujt.com
+    volumes:
+      - name: ledger
+        mountPath: /data
+        size: 1024
+    network:
+      ports:
+        - 8080
+    env:
+      - name: BRAND_NAME
+        value: Beanframe
+      - name: LISTEN_ADDR
+        value: ":8080"
+      - name: WEB_DIR
+        value: /app/web
+      - name: LEDGER_PATH
+        value: /data/ledger/main.beancount
+      - name: LEDGER_SEED_DIR
+        value: /app/example
+      - name: PUBLIC_URL
+        value: https://beanframe.prayujt.com
+      - name: OIDC_ISSUER_URL
+        value: https://auth.prayujt.com/application/o/beanframe-ui/
+      - name: OIDC_CLIENT_ID
+        value: beanframe-ui
+      - name: OIDC_CLIENT_SECRET
+        value: ${OIDC_CLIENT_SECRET}
+      - name: OIDC_PROVIDER_NAME
+        value: OpenID Connect
+      - name: MCP_ISSUER_URL
+        value: https://auth.prayujt.com/application/o/beanframe-mcp/

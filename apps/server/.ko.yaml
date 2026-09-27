@@ -1,0 +1,7 @@
+defaultPlatforms:
+  - linux/amd64
+  - linux/arm64
+builds:
+  - main: ./cmd/server
+    env:
+      - CGO_ENABLED=0
