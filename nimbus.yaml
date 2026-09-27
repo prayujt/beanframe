@@ -20,8 +20,6 @@ services:
       ports:
         - 8080
     env:
-      - name: BRAND_NAME
-        value: Beanframe
       - name: LISTEN_ADDR
         value: ":8080"
       - name: WEB_DIR

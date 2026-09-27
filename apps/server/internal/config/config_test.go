@@ -45,11 +45,10 @@ func TestInvalidConfiguration(t *testing.T) {
 		{"WEB_DIR": " "},
 		{"LEDGER_PATH": " "},
 		{"PYTHON": " "},
-		{"BRAND_NAME": " "},
-		{"BRAND_LOGO_URL": "javascript:alert(1)"},
-		{"BRAND_LOGO_URL": "//example.com/logo.png"},
-		{"BRAND_LOGO_URL": "/\\example.com/logo.png"},
-		{"BRAND_LOGO_URL": "https://user:password@example.com/logo.png"},
+		{"COMPANY_LOGO_URL": "javascript:alert(1)"},
+		{"COMPANY_LOGO_URL": "//example.com/logo.png"},
+		{"COMPANY_LOGO_URL": "/\\example.com/logo.png"},
+		{"COMPANY_LOGO_URL": "https://user:password@example.com/logo.png"},
 	} {
 		vars["AUTH_DISABLED"] = "true"
 		if _, err := parse(env.Options{Environment: vars}); err == nil {
@@ -59,10 +58,16 @@ func TestInvalidConfiguration(t *testing.T) {
 }
 
 func TestBranding(t *testing.T) {
-	for _, logo := range []string{"", "/logo.png", "https://example.com/logo.png"} {
-		cfg, err := parse(env.Options{Environment: map[string]string{"AUTH_DISABLED": "true", "COMPANY_NAME": " Example Company ", "BRAND_NAME": "Example Finance", "BRAND_LOGO_URL": logo}})
-		if err != nil || cfg.Branding.CompanyName != "Example Company" || cfg.Branding.Name != "Example Finance" || cfg.Branding.LogoURL != logo {
-			t.Fatalf("branding was not loaded: %v", err)
+	for _, company := range []struct{ input, name string }{
+		{"", "Beanframe"},
+		{"   ", "Beanframe"},
+		{" Example Company ", "Example Company Beanframe"},
+	} {
+		for _, logo := range []string{"", "/logo.png", "https://example.com/logo.png"} {
+			cfg, err := parse(env.Options{Environment: map[string]string{"AUTH_DISABLED": "true", "COMPANY_NAME": company.input, "COMPANY_LOGO_URL": logo}})
+			if err != nil || cfg.Branding.Name != company.name || cfg.Branding.LogoURL != logo {
+				t.Fatalf("unexpected branding for %q: %+v, %v", company.input, cfg.Branding, err)
+			}
 		}
 	}
 }

@@ -42,9 +42,7 @@ test('signed-out UI uses Connect session and native login', async ({
     page.getByRole('navigation', { name: 'Main navigation' })
   ).toHaveCount(0);
 });
-test('unconfigured provider uses a neutral label and company branding is optional', async ({
-  page
-}) => {
+test('unconfigured provider uses a neutral label', async ({ page }) => {
   await page.route('**' + rpc + 'GetSession', (route) =>
     route.fulfill({ json: { ...signedOut, provider: '' } })
   );
@@ -55,7 +53,6 @@ test('unconfigured provider uses a neutral label and company branding is optiona
       exact: true
     })
   ).toBeVisible();
-  await expect(page.locator('.login-note')).toHaveCount(0);
 });
 test('sign-in branding loads external images and handles an unavailable logo', async ({
   page
@@ -64,8 +61,7 @@ test('sign-in branding loads external images and handles an unavailable logo', a
     r.fulfill({
       json: {
         ...signedOut,
-        brandName: 'Example Finance',
-        companyName: 'Example Company',
+        brandName: 'Example Company Beanframe',
         brandLogoUrl: 'https://example.com/logo.png'
       }
     })
@@ -77,10 +73,9 @@ test('sign-in branding loads external images and handles an unavailable logo', a
     })
   );
   await page.goto('/');
-  await expect(page).toHaveTitle('Example Finance');
-  await expect(page.locator('.login-note')).toHaveText('Example Company');
+  await expect(page).toHaveTitle('Example Company Beanframe');
   await expect(
-    page.getByRole('heading', { name: 'Example Finance' })
+    page.getByRole('heading', { name: 'Example Company Beanframe' })
   ).toBeVisible();
   await expect(page.locator('.login-card img')).toBeVisible();
   await expect

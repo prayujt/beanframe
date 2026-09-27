@@ -16,8 +16,8 @@ import (
 
 type Branding struct {
 	CompanyName string `env:"COMPANY_NAME"`
-	Name        string `env:"BRAND_NAME" envDefault:"Beanframe"`
-	LogoURL     string `env:"BRAND_LOGO_URL"`
+	Name        string
+	LogoURL     string `env:"COMPANY_LOGO_URL"`
 }
 
 type Config struct {
@@ -45,16 +45,16 @@ func parse(options env.Options) (Config, error) {
 		return cfg, fmt.Errorf("LOG_FORMAT must be json or text")
 	}
 	cfg.Branding.CompanyName = strings.TrimSpace(cfg.Branding.CompanyName)
-	cfg.Branding.Name = strings.TrimSpace(cfg.Branding.Name)
-	if cfg.Branding.Name == "" {
-		return cfg, fmt.Errorf("BRAND_NAME must not be blank")
+	cfg.Branding.Name = "Beanframe"
+	if cfg.Branding.CompanyName != "" {
+		cfg.Branding.Name = cfg.Branding.CompanyName + " Beanframe"
 	}
 	cfg.Branding.LogoURL = strings.TrimSpace(cfg.Branding.LogoURL)
 	if value := cfg.Branding.LogoURL; value != "" {
 		u, err := url.Parse(value)
 		relative := strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//")
 		if err != nil || strings.ContainsAny(value, "\\\r\n\t") || u.User != nil || (!relative && ((u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "")) {
-			return cfg, fmt.Errorf("BRAND_LOGO_URL must be an HTTP(S) URL or a root-relative path")
+			return cfg, fmt.Errorf("COMPANY_LOGO_URL must be an HTTP(S) URL or a root-relative path")
 		}
 	}
 	_, port, err := net.SplitHostPort(cfg.ListenAddr)

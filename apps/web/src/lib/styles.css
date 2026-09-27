@@ -1461,15 +1461,6 @@ dd {
 .login-card .button:hover {
   background: #6e75bb;
 }
-.login-note {
-  margin-top: 20px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
 .spin {
   animation: spin 1s linear infinite;
 }

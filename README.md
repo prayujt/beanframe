@@ -50,9 +50,8 @@ endpoint, so changing it requires restarting the server but no frontend rebuild.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `BRAND_NAME` | `Beanframe` | Sign-in title and application name |
-| `BRAND_LOGO_URL` | Empty | Optional HTTPS image URL or root-relative logo path |
-| `COMPANY_NAME` | Empty | Optional organization name beneath the sign-in button; omitted when empty |
+| `COMPANY_NAME` | Empty | Derives the application name as `<Company> Beanframe`; empty means `Beanframe` |
+| `COMPANY_LOGO_URL` | Empty | Optional HTTP(S) image URL or root-relative company logo path |
 | `OIDC_PROVIDER_NAME` | `OpenID Connect` | Label in “Continue with …”; does not change the actual provider |
 | `PUBLIC_URL` | Required | Canonical HTTPS origin, without a path |
 | `OIDC_ISSUER_URL` | Required | Browser provider's discovery issuer |
@@ -68,6 +67,8 @@ endpoint, so changing it requires restarting the server but no frontend rebuild.
 | `LOG_LEVEL` | `debug` | `debug`, `info`, `warn`, or `error` |
 | `LOG_FORMAT` | `text` | `text` or `json` |
 
+For example, `COMPANY_NAME="Example Company"` displays **Example Company Beanframe**.
+Leaving `COMPANY_NAME` empty displays **Beanframe**.
 The workspace title after login comes from the ledger's `option "title"`.
 Company and provider names are independent: an organization can use any compatible
 OIDC provider without changing the application code.

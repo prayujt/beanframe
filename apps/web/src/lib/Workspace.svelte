@@ -16,7 +16,6 @@
     ChevronRight,
     ArrowUpRight,
     ArrowRight,
-    ShieldCheck,
     ArrowDownLeft,
     RefreshCw,
     Download,
@@ -636,11 +635,6 @@
             size={14}
           /></a
         >{/if}
-      {#if session?.companyName}
-        <span class="login-note"
-          ><ShieldCheck size={13} />{session.companyName}</span
-        >
-      {/if}
     </div>
   </div>
 {:else}
