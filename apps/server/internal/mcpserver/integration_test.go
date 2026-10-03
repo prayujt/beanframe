@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	pb "github.com/prayujt/beanframe/apps/server/gen/beancount/v1"
 	"github.com/prayujt/beanframe/apps/server/gen/beancount/v1/beancountv1connect"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // This exercises the HTTP protocol, compiled server, UI, and Python bridge.
@@ -98,6 +98,35 @@ func TestHTTPIntegration(t *testing.T) {
 	if !ready {
 		t.Fatal("server did not become ready")
 	}
+	t.Run("stateless discovery and tool call", func(t *testing.T) {
+		client := mcp.NewClient(&mcp.Implementation{Name: "stateless-integration", Version: "1"}, nil)
+		session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint + "/mcp"}, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer session.Close()
+		if version := session.InitializeResult().ProtocolVersion; version != "2026-07-28" {
+			t.Fatalf("discovery fell back to %s", version)
+		}
+		list, err := session.ListTools(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list.Tools) != 14 {
+			t.Fatalf("got %d tools", len(list.Tools))
+		}
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_balances", Arguments: map[string]any{"account": "Assets:Checking"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.IsError {
+			t.Fatalf("get_balances: %+v", result)
+		}
+		raw, err := json.Marshal(result.StructuredContent)
+		if err != nil || !strings.Contains(string(raw), "117.66") || !strings.Contains(string(raw), "EUR") {
+			t.Fatalf("get_balances: %s %v", raw, err)
+		}
+	})
 	notified := make(chan struct{}, 10)
 	client := mcp.NewClient(&mcp.Implementation{Name: "integration", Version: "1"}, &mcp.ClientOptions{ResourceUpdatedHandler: func(_ context.Context, r *mcp.ResourceUpdatedNotificationRequest) {
 		if r.Params.URI == "ledger://snapshot" {
@@ -107,7 +136,8 @@ func TestHTTPIntegration(t *testing.T) {
 			}
 		}
 	}})
-	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint + "/mcp"}, nil)
+	// Exercise the legacy session's subscriptions alongside modern tool discovery.
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint + "/mcp"}, &mcp.ClientSessionOptions{ProtocolVersion: "2025-11-25"})
 	if err != nil {
 		t.Fatal(err)
 	}
