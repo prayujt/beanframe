@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	pb "github.com/prayujt/beanframe/apps/server/gen/beancount/v1"
 	"github.com/prayujt/beanframe/apps/server/gen/beancount/v1/beancountv1connect"
+	"github.com/prayujt/beanframe/apps/server/internal/notifications"
 )
 
 // This exercises the HTTP protocol, compiled server, UI, and Python bridge.
@@ -69,8 +71,18 @@ func TestHTTPIntegration(t *testing.T) {
 	address := listener.Addr().String()
 	listener.Close()
 	endpoint := "http://" + address
+	webhooks := make(chan notifications.Event, 8)
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var event notifications.Event
+		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+			t.Error(err)
+		}
+		webhooks <- event
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer webhook.Close()
 	cmd := exec.CommandContext(ctx, binary)
-	cmd.Env = append(os.Environ(), "AUTH_DISABLED=true", "LISTEN_ADDR="+address, "WEB_DIR="+webDir, "LEDGER_PATH="+ledgerPath, "PYTHON="+python)
+	cmd.Env = append(os.Environ(), "AUTH_DISABLED=true", "LISTEN_ADDR="+address, "WEB_DIR="+webDir, "LEDGER_PATH="+ledgerPath, "PYTHON="+python, "DISCORD_WEBHOOK_URL=", "SLACK_WEBHOOK_URL=", "JSON_WEBHOOK_URL="+webhook.URL, "WEBHOOK_EVENTS=created")
 	var logs bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &logs, &logs
 	if err := cmd.Start(); err != nil {
@@ -217,6 +229,17 @@ func TestHTTPIntegration(t *testing.T) {
 	}
 	source := "2026-02-10 * \"Live MCP edit\"\n  Expenses:Hosting  5 USD\n  Assets:Checking -5 USD\n"
 	call("save_transaction", map[string]any{"source": source, "expected_revision": initial.Msg.Revision})
+	assertWebhook := func(t *testing.T, narration, revision string) {
+		t.Helper()
+		select {
+		case event := <-webhooks:
+			if event.Type != "transaction.created" || event.Transaction == nil || event.Transaction.Narration != narration || event.Revision != revision || len(event.Transaction.Postings) != 2 {
+				t.Fatalf("incorrect transaction webhook: %+v", event)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("transaction create did not deliver a webhook")
+		}
+	}
 	for _, stream := range []*connect.ServerStreamForClient[pb.LedgerEvent]{first, second} {
 		for stream.Receive() {
 			if stream.Msg().Revision != "" && stream.Msg().Revision != initial.Msg.Revision {
@@ -236,6 +259,7 @@ func TestHTTPIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertWebhook(t, "Live MCP edit", updated.Msg.Revision)
 	var txID string
 	for _, tx := range updated.Msg.Transactions {
 		if tx.Narration == "Live MCP edit" {
@@ -288,5 +312,40 @@ func TestHTTPIntegration(t *testing.T) {
 	}
 	if out := call("get_balances", map[string]any{"account": "Assets:Checking"}); !strings.Contains(out, "118.66") {
 		t.Fatal(out)
+	}
+	t.Run("UI transaction webhooks", func(t *testing.T) {
+		snapshot, err := rpcClient.GetSnapshot(ctx, connect.NewRequest(&pb.Empty{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		source := "2026-04-01 * \"UI webhook\"\n  Expenses:Hosting  15.25 USD\n  Assets:Checking\n"
+		created, err := rpcClient.SaveTransaction(ctx, connect.NewRequest(&pb.SaveTransactionRequest{Source: source, File: "transactions/2026.beancount", ExpectedRevision: snapshot.Msg.Revision}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertWebhook(t, "UI webhook", created.Msg.Revision)
+		snapshot, err = rpcClient.GetSnapshot(ctx, connect.NewRequest(&pb.Empty{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var id string
+		for _, tx := range snapshot.Msg.Transactions {
+			if tx.Narration == "UI webhook" {
+				id = tx.Id
+			}
+		}
+		edited, err := rpcClient.SaveTransaction(ctx, connect.NewRequest(&pb.SaveTransactionRequest{Id: id, Source: strings.ReplaceAll(source, "15.25", "16.25"), ExpectedRevision: created.Msg.Revision}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = rpcClient.SaveTransaction(ctx, connect.NewRequest(&pb.SaveTransactionRequest{Source: "2026-04-01 * \"Invalid\"\n  Expenses:Hosting  1 USD\n", ExpectedRevision: edited.Msg.Revision}))
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("invalid transaction must fail: %v", err)
+		}
+	})
+	select {
+	case event := <-webhooks:
+		t.Fatalf("startup, edits, deletes, failed writes, and external edits must not notify: %+v", event)
+	case <-time.After(250 * time.Millisecond):
 	}
 }

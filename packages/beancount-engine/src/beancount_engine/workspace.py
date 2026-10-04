@@ -194,6 +194,7 @@ def mutate(path, request):
         operation = request['operation']
         current = snapshot(path)
         name, content = '', ''
+        transaction_line = None
         if operation == 'save_transaction':
             source = request.get('source', '').strip() + '\n'
             if len(source.encode()) > 65536 or security_lines(source):
@@ -207,12 +208,15 @@ def mutate(path, request):
                     raise WorkspaceError('Transaction no longer exists', 'not_found')
                 name = tx['file']
                 lines, start, end = span(docs[name].decode(), tx['line'])
+                transaction_line = start + parsed[0].meta['lineno']
                 content = ''.join(lines[:start]) + source + ''.join(lines[end:])
             else:
                 name = request.get('file') or Path(path).name
                 if name not in docs:
                     raise WorkspaceError('Choose an existing ledger file', 'not_found')
-                content = docs[name].decode().rstrip() + '\n\n' + source
+                prefix = docs[name].decode().rstrip() + '\n\n'
+                transaction_line = prefix.count('\n') + parsed[0].meta['lineno']
+                content = prefix + source
         elif operation == 'delete_transaction':
             tx = next((t for t in current['transactions'] if t['id'] == request.get('id')), None)
             if not tx:
@@ -267,9 +271,24 @@ def mutate(path, request):
                 out = stage / rel
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_bytes(content.encode() if rel == name else raw)
-            _, errors, _ = load(stage / Path(path).name)
-            if errors:
-                raise WorkspaceError('Validation failed: ' + '; '.join(e.message for e in errors[:10]), 'failed_precondition')
+            validated = snapshot(stage / Path(path).name)
+            if validated['errors']:
+                raise WorkspaceError('Validation failed: ' + '; '.join(validated['errors'][:10]), 'failed_precondition')
+            if operation == 'save_transaction':
+                transaction = next((t for t in validated['transactions']
+                                    if t['file'] == name and t['line'] == transaction_line), None)
+                # Files outside the root's include graph are saved but not processed.
+                event = ({'type': 'transaction.updated' if request.get('id') else 'transaction.created',
+                          'file': name, 'transaction': transaction} if transaction is not None
+                         else {'type': 'ledger.file_written', 'file': name})
+            elif operation == 'delete_transaction':
+                event = {'type': 'transaction.deleted', 'file': name, 'transaction': tx}
+            else:
+                kind = {'open_account': 'account.opened', 'close_account': 'account.closed',
+                        'write_file': 'ledger.file_written', 'restore_version': 'ledger.restored'}[operation]
+                event = {'type': kind, 'file': name}
+                if operation in ('open_account', 'close_account'):
+                    event.update(account=account, date=date)
         _, now = documents(path)
         if revision(now) != before_revision:
             raise WorkspaceError('External file edit detected. Refresh before saving.', 'aborted')
@@ -305,7 +324,7 @@ def mutate(path, request):
                 finally: os.close(directory_fd)
         finally:
             if os.path.exists(temporary): os.unlink(temporary)
-        return {'revision': after_revision, 'message': 'Saved and validated'}
+        return {'revision': after_revision, 'message': 'Saved and validated', 'event': event}
 
 
 def report(path, request):

@@ -39,6 +39,13 @@ type Transaction struct {
 	Links     []string  `json:"links"`
 	Postings  []Posting `json:"postings"`
 }
+type MutationEvent struct {
+	Type        string       `json:"type"`
+	File        string       `json:"file,omitempty"`
+	Account     string       `json:"account,omitempty"`
+	Date        string       `json:"date,omitempty"`
+	Transaction *Transaction `json:"transaction,omitempty"`
+}
 type Account struct {
 	Closed     string   `json:"closed"`
 	Name       string   `json:"name"`
