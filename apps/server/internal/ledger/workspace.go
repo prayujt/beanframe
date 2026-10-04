@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/prayujt/beanframe/apps/server/internal/engine"
 )
 
 type Event struct {
@@ -46,12 +48,18 @@ func (s *Service) Mutate(ctx context.Context, op string, args Mutation) (*Mutati
 	if err != nil {
 		return nil, err
 	}
-	var result MutationResult
+	var result struct {
+		MutationResult
+		Event *engine.MutationEvent `json:"event"`
+	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
 	}
 	s.Publish(Event{Revision: result.Revision, Kind: "saved"})
-	return &result, nil
+	if result.Event != nil && s.OnMutation != nil {
+		s.OnMutation(*result.Event, result.Revision)
+	}
+	return &result.MutationResult, nil
 }
 func (s *Service) Publish(event Event) {
 	s.eventMu.Lock()

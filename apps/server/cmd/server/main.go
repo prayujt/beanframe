@@ -15,6 +15,7 @@ import (
 	"github.com/prayujt/beanframe/apps/server/internal/engine"
 	"github.com/prayujt/beanframe/apps/server/internal/ledger"
 	"github.com/prayujt/beanframe/apps/server/internal/mcpserver"
+	"github.com/prayujt/beanframe/apps/server/internal/notifications"
 	"github.com/prayujt/beanframe/apps/server/internal/rpcserver"
 	"github.com/prayujt/beanframe/apps/server/internal/web"
 	"github.com/prayujt/beanframe/apps/server/pkg/log"
@@ -39,6 +40,9 @@ func run(ctx context.Context) error {
 		return err
 	}
 	service := &ledger.Service{Engine: client, Workspace: client}
+	if notifier := notifications.New(ctx, cfg.Webhooks, cfg.Branding.Name); notifier != nil {
+		service.OnMutation = notifier.Publish
+	}
 	go service.Watch(ctx)
 	handler, err := web.Handler(cfg.WebDir, mcpserver.Handler(ctx, service))
 	if err != nil {

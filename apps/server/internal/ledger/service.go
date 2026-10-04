@@ -16,6 +16,7 @@ type Reader interface {
 type Service struct {
 	Engine      Reader
 	Workspace   *engine.Client
+	OnMutation  func(engine.MutationEvent, string)
 	mu          sync.RWMutex
 	eventMu     sync.Mutex
 	subscribers map[chan Event]struct{}

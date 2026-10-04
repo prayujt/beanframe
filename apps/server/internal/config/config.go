@@ -12,6 +12,7 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/prayujt/beanframe/apps/server/internal/auth"
+	"github.com/prayujt/beanframe/apps/server/internal/notifications"
 )
 
 type Branding struct {
@@ -24,6 +25,7 @@ type Config struct {
 	Branding      Branding
 	LedgerSeedDir string `env:"LEDGER_SEED_DIR"`
 	Auth          auth.Config
+	Webhooks      notifications.Config
 	LogLevel      slog.Level `env:"LOG_LEVEL" envDefault:"debug"`
 	LogFormat     string     `env:"LOG_FORMAT" envDefault:"text"`
 	ListenAddr    string     `env:"LISTEN_ADDR" envDefault:":8080"`
@@ -77,6 +79,9 @@ func parse(options env.Options) (Config, error) {
 		return cfg, fmt.Errorf("resolve LEDGER_PATH: %w", err)
 	}
 
+	if err := cfg.Webhooks.Validate(); err != nil {
+		return cfg, err
+	}
 	if err := cfg.Auth.Validate(); err != nil {
 		return cfg, err
 	}

@@ -18,6 +18,7 @@ engine and file format. It is an independent project.
 - Configurable branding and OpenID Connect sign-in, with PKCE, server-side
   sessions, refresh tokens, and signed backchannel logout.
 - Persistent ledger files mounted into a single container. No application database.
+- Optional Discord, Slack, and JSON webhook notifications for committed ledger changes.
 
 Reports preserve decimal amounts and cost lots. They use book cost in the selected
 currency; they do not perform foreign-exchange conversion or market valuation.
@@ -66,12 +67,72 @@ endpoint, so changing it requires restarting the server but no frontend rebuild.
 | `PYTHON` | `python3` | Python executable with the engine package installed |
 | `LOG_LEVEL` | `debug` | `debug`, `info`, `warn`, or `error` |
 | `LOG_FORMAT` | `text` | `text` or `json` |
+| `DISCORD_WEBHOOK_URL` | Empty | Optional native Discord webhook URL for rich transaction embeds |
+| `SLACK_WEBHOOK_URL` | Empty | Optional Slack incoming webhook URL for rich Block Kit messages |
+| `JSON_WEBHOOK_URL` | Empty | Optional HTTP(S) endpoint for structured transaction events |
+| `WEBHOOK_EVENTS` | `created` | Events sent to configured webhooks: `created`, `transactions`, or `all` |
 
 For example, `COMPANY_NAME="Example Company"` displays **Example Company Beanframe**.
 Leaving `COMPANY_NAME` empty displays **Beanframe**.
 The workspace title after login comes from the ledger's `option "title"`.
 Company and provider names are independent: an organization can use any compatible
 OIDC provider without changing the application code.
+
+### Webhook notifications
+
+Set any combination of `DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`, and
+`JSON_WEBHOOK_URL` on the server, then restart it. Empty or unset URLs disable
+that destination. Use Discord's normal webhook URL, without the `/slack` suffix;
+Beanframe sends native embeds. Slack receives Block Kit messages with a plain
+text fallback. Both rich formats show the payee, narration, date, and postings,
+preserving decimal amounts and currencies. Long rich messages are truncated to
+fit provider limits; the JSON event retains the complete transaction.
+
+`WEBHOOK_EVENTS` selects which successful changes to send to every configured
+destination:
+
+| Value | Events |
+| --- | --- |
+| `created` (default) | `transaction.created` only |
+| `transactions` | `transaction.created`, `transaction.updated`, `transaction.deleted` |
+| `all` | All transaction events plus `account.opened`, `account.closed`, `ledger.file_written`, `ledger.restored` |
+
+The default fires only after a new transaction is validated and committed
+through the web transaction form or MCP `save_transaction` with no transaction
+ID, regardless of its Beancount flag. Transactions must appear in the validated
+ledger snapshot; writes to files outside the root's include graph emit a file
+event instead. Account, source-file, and restore events use their corresponding
+UI and MCP write operations. Failed writes, saves with
+no changes, external file changes, and existing transactions at startup never
+send notifications, even with `all` selected. Restart the server after changing
+the event selection.
+
+The generic endpoint receives an HTTP POST with `Content-Type: application/json`
+and these fields:
+
+| Field | Value |
+| --- | --- |
+| `type` | One of the event names above |
+| `occurred_at` | UTC timestamp when the committed change was queued |
+| `revision` | Committed ledger revision |
+| `file` | Relative path of the affected ledger file |
+| `transaction` | Transaction events only: complete snapshot transaction, including ID, date, flag, payee, narration, tags, links, postings, source, file, and line; deletes include the removed transaction |
+| `account`, `date` | Account events only: account name and opening/closing date |
+
+Posting amounts remain decimal strings, with units, cost, price, and book value
+in the same shape as the ledger snapshot. Each destination has its own background
+worker and a queue of 128 events, so a slow or unavailable endpoint does not
+block ledger writes or the other destinations. Requests time out after five
+seconds. Network failures, HTTP 429, and HTTP 5xx responses get up to three total
+attempts, with backoff and `Retry-After` support capped at 30 seconds per wait.
+Other unsuccessful responses, including redirects, are not retried. Delivery
+failures are logged without webhook URLs or response bodies.
+
+Delivery is best effort: queues are held in memory, pending events are lost on
+shutdown, and a full destination queue drops new events with a warning. Retries
+can produce duplicates; custom receivers can deduplicate on `revision` plus
+`type`. Webhook configuration stays server-side and is not exposed by the public
+session endpoint.
 
 ## Authentication
 
